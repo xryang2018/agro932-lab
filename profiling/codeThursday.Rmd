@@ -1,0 +1,352 @@
+---
+title: "Lab 7"
+author: "Xuerong Yang"
+date: "02-27-2020"
+output: NULL
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE) 
+knitr::opts_knit$set(root.dir=normalizePath('../../')) 
+```
+#install packages
+```{r,eval=FALSE}
+#library(devtools)
+#library(knitr)
+devtools::install_github('yihui/xaringan')
+devtools::install_github('rstudio/blogdown')
+library(xaringan)
+library(blogdown)
+library(knitr)
+```
+
+# Part I
+This is a unordered list:  
+- list one  
+- list two  
+- list three  
+```{r,eval=FALSE}
+
+plot(cars)
+
+```
+```{bash,eval= FALSE}
+#code 
+
+samtools view @ 1 
+```
+
+
+
+#BLUP, April 2,2020
+```{r,eval=FALSE}
+y <- matrix(c(4.45,4.61,5.27,5.00,5.82,5.79),byrow=FALSE,nrow=6)
+X <- matrix(c(1,1,1,0,0,0,0,0,0,1,1,1),byrow=FALSE,nrow=6)
+Z <- matrix(c(1,0,0,0,0,1,0,0,0,0,1,0,0,1,0,0,0,0,0,1,0,0,1,0),byrow = TRUE,nrow = 6)
+
+A <- matrix(c(2,1,11/16,7/8,1,2,43/32,27/16,11/16,43/32,2,91/64,7/8,27/16,91/64,2),byrow = FALSE,nrow = 4)
+
+R <- diag(c(1/18,1/18,1/18,1/9,1/9,1/9))
+
+a11 <- t(X) %*% solve(R) %*% X
+
+a12 <- t(X) %*% solve(R) %*% Z
+
+a21 <- t(Z) %*% solve(R) %*% X
+
+#assume the ratio of VR/VA=5
+a22 <- t(Z) %*% solve(R) %*% Z + solve(A) * 5
+
+lhs <- rbind(cbind(a11,a12),cbind(a21,a22))
+lhs
+
+#rhs
+b1 <- t(X) %*% solve(R) %*% y
+b2 <- t(Z) %*% solve(R) %*% y
+rhs <- rbind(b1,b2)
+#mme
+solve(lhs) %*% rhs
+```
+#April 7, 2020, Genetic selection
+```{r,eval=FALSE}
+Z <- matrix(c(1,1,-1,1,-1,-1, 1,-1,1,-1,-1,1, 1,1,-1,1,1,-1), byrow=FALSE, nrow=6)
+Z
+y <- matrix(c(4.45, 4.61, 5.27, 5.00, 5.82, 5.79), byrow=FALSE, nrow=6)
+X <- matrix(c(1,1,1,0,0,0, 0, 0,0, 1, 1,1), byrow=FALSE, nrow=6)
+R <- matrix(c(1/18,0,0,0,0,0, 0,1/18,0,0,0,0, 0,0,1/18,0,0,0,
+              0,0,0,1/9,0,0, 0,0,0,0,1/9,0, 0,0,0,0,0,1/9), nrow=6, byrow=T)
+
+
+a11 <- t(X) %*% solve(R) %*% X
+a12 <- t(X) %*% solve(R) %*% Z
+a21 <- t(Z) %*% solve(R) %*% X
+a22_1 <- t(Z) %*% solve(R) %*% Z 
+a22_2 <- diag(3)*3
+a22 <- a22_1 + a22_2
+lhs <- rbind(cbind(a11,a12),cbind(a21,a22))
+lhs <- rbind(cbind(a11, a12), cbind(a21, a22 + a22_2))
+rhs <- rbind(t(X) %*% solve(R) %*% y, t(Z) %*% solve(R) %*% y)
+eff <- solve(lhs) %*% rhs
+eff
+```
+#April 8,2020, Genomic selection in practice
+```{r,eval=FALSE}
+#Resende Jr. et al. (2012) (DOI: 10.1534/genetics.111.137026)
+#In this example, we will use the breeding values of crown width across the planting beds at age 6 (CWAC6).
+# read phenotype and SNP files
+pheno_file <- "https://jyanglab.com/img/data/DATA_nassau_age6_CWAC.csv"
+geno_file <- "https://jyanglab.com/img/data/Snp_Data.csv"
+pheno <- read.csv(pheno_file, header=TRUE, stringsAsFactors = FALSE)
+# hist(pheno$Derregressed_BV)
+geno <- read.csv(geno_file, header=TRUE, stringsAsFactors = FALSE)
+dim(geno)
+# geno[1:10, 1:10]
+#Remove missing phenotypes
+#There are some accessions containing no phenotype. We need to remove these accessions first.
+na.index <-  which(is.na(pheno$Derregressed_BV))
+# length(na.index)
+pheno <- pheno[-na.index, ]
+# Keep genotypes for these remaining lines
+geno <- geno[geno$Genotype %in% pheno$Genotype, ]
+# phenotypes 
+y <- pheno$Derregressed_BV
+y <- matrix(y, ncol=1)
+# markers 
+geno <- geno[,-1] # 861 x 4853
+geno[geno == -9] <- NA
+
+#In the geno matrix, row indicates individual, column indicates SNPs.
+#Missingness and MAF
+# missing rate
+missing <- apply(geno, 2, function(x){sum(is.na(x))/length(x)})
+# minor allele frequency
+maf <- apply(geno, 2, function(x){
+  frq <- mean(x, na.rm=TRUE)/2
+  return(ifelse(frq > 0.5, 1-frq, frq))
+})
+#plot the results
+hist(missing, breaks=100, col="blue", xlab="SNP Missing rate")
+hist(maf, breaks=100, col="blue", xlab="Minor Allele Freq")
+
+#Removing SNPs with high missing rate (missingness > 0.2) and low MAF (MAF < 0.05)
+-Question: How many markers are removed?
+
+idx1 <- which(missing > 0.2) #154
+idx2 <- which(maf < 0.05) #1647
+idx <- unique(c(idx1, idx2)) #1784
+geno2 <- geno[, -idx]
+dim(geno2)  
+
+#Removing SNPs with high missing rate (missingness > 0.2) and low MAF (MAF < 0.05)
+
+-Question: How many markers are removed?
+  
+idx1 <- which(missing > 0.2) #154
+idx2 <- which(maf < 0.05) #1647
+idx <- unique(c(idx1, idx2)) #1784
+geno2 <- geno[, -idx]
+dim(geno2)
+
+#Missing marker imputation
+
+-Replace missing marker genotypes with mean values. Then store the marker genotypes in a matrix object Z. 
+
+Z <- matrix(0, ncol=ncol(geno2), nrow=nrow(geno2))
+for (j in 1:ncol(geno2)){
+  #cat("j = ", j, '\n')
+  Z[,j] <- ifelse(is.na(geno2[,j]), mean(geno2[,j], na.rm=TRUE), geno2[,j])
+}
+# sum(is.na(Z))
+
+#Standardize the genotype matrix to have a mean of zero and variance of one. Save this matrix as Zs.
+
+Zs <- scale(Z, center = TRUE, scale = TRUE)
+# dimensions 
+n <- nrow(Zs)
+m <- ncol(Zs)
+
+#Calcualte genomic relationship
+
+Compute the second genomic relationship matrix of VanRaden (2008) using the entire markers.
+Then add a very small positive constant (e.g., 0.001) to the diagonal elements so that G matrix is invertible.
+# Given matrices x and y as arguments, return a matrix cross-product. This is formally equivalent to (but usually slightly faster than) the call t(x) %*% y (crossprod) or x %*% t(y) (tcrossprod).
+G <- tcrossprod(Zs) / ncol(Zs)
+G <- G + diag(n)*0.001
+
+#Solve MME for GBLUP
+#-Directly take the inverse of LHS to obtain the solutions for GBLUP. Report the estimates of intercept and additive genetic values. Use λ=1.35
+lambda <- 1.35 # fit$Ve / fit$Vm
+Ginv <- solve(G)
+ones <- matrix(1, ncol=1, nrow=n)
+Z <- diag(n)
+# Given matrices x and y as arguments, return a matrix cross-product. This is formally equivalent to (but usually slightly faster than) the call t(x) %*% y (crossprod) or x %*% t(y) (tcrossprod).
+LHS1 <- cbind(crossprod(ones), crossprod(ones, Z)) 
+LHS2 <- cbind(crossprod(Z, ones), crossprod(Z) +  Ginv*lambda)
+LHS <- rbind(LHS1, LHS2)
+RHS <- rbind( crossprod(ones, y), crossprod(Z,y) )
+sol <- solve(LHS, RHS)
+head(sol)
+tail(sol)
+
+#R package: rrBLUP
+
+#-Fit GBLUP by using the mixed.solve function in the rrBLUP R package.
+
+#--Report the estimates of intercept and additive genetic values.
+#--Do they agree with previous estimates?
+#--Also, report the estimated genomic heritability and the ratio of variance components 
+#install.packages("rrBLUP")
+library(rrBLUP)
+fit <- mixed.solve(y = y, K=G)
+# additive genetic variance
+fit$Vu
+# residual variance
+fit$Ve
+# intercept 
+fit$beta
+# additive genetic values
+head(fit$u)
+tail(fit$u)
+# genomic h2
+fit$Vu / (fit$Vu + fit$Ve)
+# ratio of variance components 
+fit$Ve / fit$Vu
+# plot(x=sol[-1], y=fit$u)
+
+#Directly take the inverse of LHS to obtain the solutions for marker-based GBLUP (RR-BLUP). Report the estimates of intercept and marker additive genetic effects. Use λ=4326.212 
+
+lambda <- 4326.212 # fit$Ve / fit$Vu
+ones <- matrix(1, ncol=1, nrow=n)
+I <- diag(m)
+LHS1 <- cbind(crossprod(ones), crossprod(ones, Zs)) 
+LHS2 <- cbind(crossprod(Zs, ones), crossprod(Zs) +  I*lambda)
+LHS <- rbind(LHS1, LHS2)
+RHS <- rbind( crossprod(ones, y), crossprod(Zs,y) )
+sol2 <- solve(LHS, RHS)
+head(sol2)
+tail(sol2)
+
+#Fit RR-BLUP by using the mixed.solve function in the rrBLUP R package.
+
+#-Report the estimates of intercept and marker additive genetic effects.
+#-o they agree with the estimates with the manual calculation?
+#-Also, report the ratio of variance components
+library(rrBLUP)
+fit2 <- mixed.solve(y = y, Z=Zs)
+# marker additive genetic variance
+fit2$Vu
+# residual variance
+fit2$Ve
+# intercept 
+fit2$beta
+# marker additive genetic effects
+head(fit2$u)
+tail(fit2$u)
+# ratio of variance components 
+fit2$Ve / fit2$Vu
+# plot(x=sol2[-1], y=fit2$u)
+
+#K-fold validation
+
+#-Repeat GBLUP but treat the first 600 individuals as a training set and predict the additive genetic values of the remaining individuals in the testing set.
+
+#-What is the predictive correlation in the testing set? Use
+n.trn <- 600
+n.tst <- 261
+y.trn <- y[1:n.trn]
+y.tst <- y[n.trn+1:n.tst]
+Zs.trn <- Zs[1:n.trn,]
+Zs.tst <- Zs[n.trn+1:n.tst,]
+Gtrn <- tcrossprod(Zs.trn) / ncol(Zs.trn)
+Gtrn <- Gtrn + diag(n.trn)*0.001
+Gtst.trn <- tcrossprod(Zs.tst, Zs.trn) / ncol(Zs.tst)
+#Gtrn <- G[1:n.trn, 1:n.trn]
+#Gtst.trn <- G[n.trn+1:n.tst, 1:n.trn]
+lambda <- 1.348411 # fit$Ve / fit$Vu
+Ginv.trn <- solve(Gtrn)
+ones <- matrix(1, ncol=1, nrow=n.trn)
+Z <- diag(n.trn)
+LHS1 <- cbind(crossprod(ones), crossprod(ones, Z)) 
+LHS2 <- cbind(crossprod(Z, ones), crossprod(Z) +  Ginv.trn*lambda)
+LHS <- rbind(LHS1, LHS2)
+RHS <- rbind( crossprod(ones, y.trn), crossprod(Z,y.trn) )
+sol.trn <- solve(LHS, RHS)
+
+
+#Repeat RR-BLUP but treat the first 600 individuals as a training set and predict the additive genetic values of the remaining individuals in the testing set.
+
+#-What is the predictive correlation in the testing set? Use λ=4326.212
+
+#-Also, compare this predictive correlation to the one from GBLUP.
+Zs.trn <- Zs[1:n.trn, ]
+Zs.tst <- Zs[n.trn+1:n.tst, ]
+lambda <- 4326.212 # fit$Ve / fit$Vu
+ones <- matrix(1, ncol=1, nrow=n.trn)
+I <- diag(m)
+LHS1 <- cbind(crossprod(ones), crossprod(ones, Zs.trn)) 
+LHS2 <- cbind(crossprod(Zs.trn, ones), crossprod(Zs.trn) +  I*lambda)
+LHS <- rbind(LHS1, LHS2)
+RHS <- rbind( crossprod(ones, y.trn), crossprod(Zs.trn, y.trn) )
+sol.trn <- solve(LHS, RHS)
+# prediction
+y.hat2 <- Zs.tst %*% matrix(sol.trn[-1])
+# cor(y.hat2, y[(n.trn+1):n])
+# plot(y.hat2, y[(n.trn+1):n])
+
+```
+#April 16, 2020 GWAS
+```{r,eval=FALSE}
+### read in the data from step one
+df <- read.csv("http://ricediversity.org/data/sets/44kgwas/RiceDiversity.44K.germplasm.csv", skip=1)
+df$Latitude <- as.numeric(as.character(df$Latitude))
+range(df$Latitude, na.rm = T)
+
+library(ggmap)
+##lowerleftlon, lowerleftlat, upperrightlon, upperrightlat
+myloc <- c(-105, -40, 170, 56)
+mymap <- get_map(location=myloc, source="stamen", crop=FALSE, color="bw")
+ggmap(mymap) + 
+    geom_point(aes(x = Longitude, y = Latitude), data = df,
+               alpha = .9, size = 1, col="red")
+
+library(plyr)
+c <- ddply(df, .(Country.of.origin), nrow)
+c <- subset(c, Country.of.origin != "")
+df2 <- merge(c, df[, c("Country.of.origin",  "Latitude", "Longitude")], by="Country.of.origin")
+df2 <- df2[!duplicated(df2$Country.of.origin),]
+
+mymap <- get_map(location=myloc, source="stamen", crop=FALSE, color="bw")
+ggmap(mymap) + 
+    geom_point(aes(x = Longitude, y = Latitude), data = df2,
+               alpha = .9, size = df2$V1/10, col="red")
+
+cp -r data/RiceDiversity_44K_Genotypes_PLINK largedata/
+module load plink/1.9
+# convert it to binary file
+cd largedata/RiceDiversity_44K_Genotypes_PLINK
+plink --file sativas413 --make-bed --out binary_sativas413
+
+plink -bfile binary_sativas413 --freq --missing --out sativas413
+# copy results back to cache folder!
+cp largedata/RiceDiversity_44K_Genotypes_PLINK/sativas413.frq cache/
+cp largedata/RiceDiversity_44K_Genotypes_PLINK/sativas413.lmiss cache/
+  
+# install.packages("data.table")
+library("data.table")
+maf <- fread("cache/sativas413.frq", header=TRUE)
+lmiss <- fread("cache/sativas413.lmiss", header=TRUE)
+pdf("graphs/maf_lmiss.pdf", width = 10, height=5)
+par(mfrow=c(1,2))
+hist(maf$MAF, breaks=50, col="#cdb79e", main="MAF (SNP = 36,901)", xlab="Minor Allele Freq")
+#abline(v=0.01, lty=2, col="black", lwd=3)
+abline(v=0.05, lty=2, col="red", lwd=3)
+hist(lmiss$F_MISS, breaks=35, col="#cdb79e", main="Missingness (SNP = 36,901)", xlab="Missing Rate")
+#abline(v=0.6, lty=2, col="red", lwd=3)
+#abline(v=0.05, lty=2, col="red", lwd=3)
+dev.off()
+
+plink -bfile binary_sativas413 --r2 --ld-window 100 --ld-window-kb 100 --ld-window-r2 0 --out binary_sativas413
+
+
+
+```
+
